@@ -3,6 +3,7 @@
 
 #include "board.h"
 #include "engine.h"
+#include "debug.h"
 #include "move.h"
 #include "proof/proof.h"
 
@@ -10,6 +11,7 @@ static coord_t *
 proof_genmove(struct engine *e, struct board *b, struct time_info *ti, enum stone color, bool pass_all_alive)
 {
     coord_t *coord;
+    fprintf(stderr, "HELLO WORLD!");
     struct board b2;
     board_copy(&b2, b);
     for (int i=0; i<=19; i++){
