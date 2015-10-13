@@ -1,0 +1,5 @@
+compile command: make all
+when opening debug in gogui, enter netcat -l 8091 into a terminal to stream output
+
+For use on Mac, the -frename-registers flag breaks the compiler. 
+It has been moved so that it is only added if MAC is not defined.
