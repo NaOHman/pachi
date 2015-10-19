@@ -54,9 +54,9 @@ BINDIR=$(PREFIX)/bin
 # (N.B. -ffast-math breaks us; -fomit-frame-pointer is added below
 # unless PROFILING=gprof.)
 ifdef CUDA
-CUSTOM_CFLAGS?=-Wall -ggdb3 -O3 -std=gnu99 -frename-registers -lpthread -Wsign-compare -D_GNU_SOURCE
+CUSTOM_CFLAGS?=-Wall -ggdb3 -O3 -std=gnu99 -lpthread -Wsign-compare -D_GNU_SOURCE
 else
-CUSTOM_CFLAGS?=-Wall -ggdb3 -O3 -std=gnu99 -frename-registers -pthread -Wsign-compare -D_GNU_SOURCE
+CUSTOM_CFLAGS?=-Wall -ggdb3 -O3 -std=gnu99 -pthread -Wsign-compare -D_GNU_SOURCE
 endif
 
 ### CONFIGURATION END
@@ -72,6 +72,7 @@ ifdef MAC
 	SYS_LIBS?=-lm -ldl
 else
 	SYS_CFLAGS?=-march=native
+	CUSTOM_CFLAGS+=-frename-registers
 ifdef CUDA
 	SYS_LDFLAGS?=-lpthread
 else
