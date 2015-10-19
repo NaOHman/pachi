@@ -78,6 +78,7 @@ else
 	SYS_LDFLAGS?=-pthread -rdynamic
 endif
 	SYS_LIBS?=-lm -lrt -ldl
+	CUSTOM_CFLAGS+=-frename-registers 
 endif
 endif
 
