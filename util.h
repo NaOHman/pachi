@@ -53,8 +53,13 @@ checked_malloc(size_t size, char *filename, unsigned int line, const char *func)
 {
 	void *p = malloc(size);
 	if (!p) {
+#ifdef __cplusplus
+        fprintf(stderr, "%s:%u: %s: OUT OF MEMORY malloc(%zu)\n",
+			filename, line, func, size);
+#else
 		fprintf(stderr, "%s:%u: %s: OUT OF MEMORY malloc(%zu)\n",
 			filename, line, func, size);
+#endif
 		exit(1);
 	}
 	return p;

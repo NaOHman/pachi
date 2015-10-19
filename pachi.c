@@ -14,6 +14,7 @@
 #include "montecarlo/montecarlo.h"
 #include "random/random.h"
 #include "proof/proof.h"
+#include "kokrusher/kokrusher.h"
 #include "patternscan/patternscan.h"
 #include "patternplay/patternplay.h"
 #include "joseki/joseki.h"
@@ -41,6 +42,7 @@ enum engine_id {
 	E_MONTECARLO,
 	E_UCT,
 	E_PROOF,
+	E_KOKRUSHER,
 	E_DISTRIBUTED,
 	E_JOSEKI,
 	E_MAX,
@@ -54,6 +56,7 @@ static struct engine *(*engine_init[E_MAX])(char *arg, struct board *b) = {
 	engine_montecarlo_init,
 	engine_uct_init,
 	engine_proof_init,
+	engine_kokrusher_init,
 	engine_distributed_init,
 	engine_joseki_init,
 };
@@ -77,7 +80,7 @@ static void done_engine(struct engine *e)
 static void usage(char *name)
 {
 	fprintf(stderr, "Pachi version %s\n", PACHI_VERSION);
-	fprintf(stderr, "Usage: %s [-e proof|random|replay|montecarlo|uct|distributed]\n"
+	fprintf(stderr, "Usage: %s [-e kokrusher|proof|random|replay|montecarlo|uct|distributed]\n"
 		" [-d DEBUG_LEVEL] [-D] [-r RULESET] [-s RANDOM_SEED] [-t TIME_SETTINGS] [-u TEST_FILENAME]\n"
 		" [-g [HOST:]GTP_PORT] [-l [HOST:]LOG_PORT] [-f FBOOKFILE] [ENGINE_ARGS]\n", name);
 }
@@ -119,6 +122,8 @@ int main(int argc, char *argv[])
 					engine = E_PATTERNPLAY;
 				} else if (!strcasecmp(optarg, "proof")) {
 					engine = E_PROOF;
+				} else if (!strcasecmp(optarg, "kokrusher")) {
+					engine = E_KOKRUSHER;
 				} else if (!strcasecmp(optarg, "joseki")) {
 					engine = E_JOSEKI;
 				} else {

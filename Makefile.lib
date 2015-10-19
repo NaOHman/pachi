@@ -48,7 +48,13 @@ CFLAGS += $(CUSTOM_CFLAGS) $(XCFLAGS) $(INCLUDES) $(SYS_CFLAGS)
 unexport LDFLAGS
 LDFLAGS += $(CUSTOM_LDFLAGS) $(XLDFLAGS) $(SYS_LDFLAGS)
 COMPILE = $(CC) $(CFLAGS)
+NVCC=nvcc $(NVCC_ARCH)
+NVCC_COMPILE = $(NVCC) $(NVCC_FLAGS) $(INCLUDES)
+ifdef CUDA
+LINK = $(NVCC) $(LDFLAGS)
+else
 LINK = $(CC) $(LDFLAGS)
+endif
 
 DEP_FILES_1 = $(foreach src,$(OBJS),.deps/$(src))
 DEP_FILES = $(DEP_FILES_1:%.o=%.P)
@@ -67,6 +73,9 @@ endif
 			>> .deps/$(*F).P; \
 		rm .deps/$(*F).pp
 
+%.o: %.cu
+	$(NVCC_COMPILE) -c $*.cu -o $*.o 
+
 %.a:
 	$(call cmd,archive)
 
@@ -79,3 +88,5 @@ all-recursive clean-recursive clean-profiled-recursive:
 	for subdir in $(SUBDIRS); do \
 		$(call ncmd,recmake) || exit 1; \
 	done
+
+# vim: ft=make
