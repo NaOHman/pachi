@@ -1,7 +1,7 @@
 INCLUDES=-I..
 OBJS=proof.o
 
-all: proof.a
+all: proof.a 
 proof.a: $(OBJS)
 
 clean:

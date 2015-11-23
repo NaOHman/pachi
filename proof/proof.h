@@ -3,6 +3,6 @@
 
 #include "engine.h"
 
-struct engine * engine_proof_init(char *arg, struct board *b);
+struct engine *engine_proof_init(char *arg, struct board *b);
 
 #endif

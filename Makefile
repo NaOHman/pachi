@@ -19,6 +19,8 @@
 
 # MAC=1
 
+#CUDA=1
+
 # By default, Pachi uses low-precision numbers within the game tree to
 # conserve memory. This can become an issue with playout counts >1M,
 # e.g. with extremely long thinking times or massive parallelization;
@@ -51,10 +53,13 @@ BINDIR=$(PREFIX)/bin
 # any of this.
 # (N.B. -ffast-math breaks us; -fomit-frame-pointer is added below
 # unless PROFILING=gprof.)
+ifdef CUDA
+CUSTOM_CFLAGS?=-Wall -ggdb3 -O3 -std=gnu99 -lpthread -Wsign-compare -D_GNU_SOURCE
+else
 CUSTOM_CFLAGS?=-Wall -ggdb3 -O3 -std=gnu99 -pthread -Wsign-compare -D_GNU_SOURCE
+endif
 
 ### CONFIGURATION END
-
 
 ifdef WIN
 	SYS_CFLAGS?=
@@ -67,7 +72,12 @@ ifdef MAC
 	SYS_LIBS?=-lm -ldl
 else
 	SYS_CFLAGS?=-march=native
+	CUSTOM_CFLAGS+=-frename-registers
+ifdef CUDA
+	SYS_LDFLAGS?=-lpthread
+else
 	SYS_LDFLAGS?=-pthread -rdynamic
+endif
 	SYS_LIBS?=-lm -lrt -ldl
 	CUSTOM_CFLAGS+=-frename-registers
 endif
@@ -96,9 +106,17 @@ ifndef AR
 AR=ar
 endif
 
+ifdef CUDA
+	NVCC_ARCH?=-gencode arch=compute_20,code=sm_20
+	CUDA_LIBS?=-lcudart -lcuda
+	LIBS+=$(CUDA_LIBS)
+	CUSTOM_CFLAGS+=-D CUDA
+endif
+
 ifndef INSTALL
 INSTALL=/usr/bin/install
 endif
+
 
 export
 unexport INCLUDES
@@ -106,11 +124,11 @@ INCLUDES=-I.
 
 
 OBJS=board.o gtp.o move.o ownermap.o pattern3.o pattern.o patternsp.o patternprob.o playout.o probdist.o random.o stone.o timeinfo.o network.o fbook.o chat.o
-SUBDIRS=random proof replay patternscan patternplay joseki montecarlo uct uct/policy playout tactics t-unit distributed 
+SUBDIRS=random proof kokrusher replay patternscan patternplay joseki montecarlo uct uct/policy playout tactics t-unit distributed 
 
 all: all-recursive pachi
 
-LOCALLIBS=proof/proof.a random/random.a replay/replay.a patternscan/patternscan.a patternplay/patternplay.a joseki/joseki.a montecarlo/montecarlo.a uct/uct.a uct/policy/uctpolicy.a playout/playout.a tactics/tactics.a t-unit/test.a distributed/distributed.a 
+LOCALLIBS=proof/proof.a kokrusher/kokrusher.a random/random.a replay/replay.a patternscan/patternscan.a patternplay/patternplay.a joseki/joseki.a montecarlo/montecarlo.a uct/uct.a uct/policy/uctpolicy.a playout/playout.a tactics/tactics.a t-unit/test.a distributed/distributed.a 
 $(LOCALLIBS): all-recursive
 	@
 pachi: $(OBJS) pachi.o $(LOCALLIBS)
