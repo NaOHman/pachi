@@ -30,15 +30,17 @@ extern "C" {
 const int N = 16; 
 const int blocksize = 16; 
 
+// this method roughly corresponds to the Simulate method from the pseudocode
 __global__ void running_every_thread(struct board *b, enum stone color, int[] votes){
     struct *myBoard  = malloc(sizeof(struct board));
     board_copy(myBoard, b);
     //make first move according to blckid and tid
-    //where uct happens 
+    //where uct happens: SimTree method from pseudocode
     int win = cuda_play_random_game(myBoard, color);
-    //record move
+    //record move: Backup method from pseudocode
 }
 
+// this method corresponds to SimDefault in the pseudocode
 __device__ int cuda_play_random_game(struct board *b, enum stone starting_color)
 {
 	int gamelen = MAX_PLAYS - b->moves;
@@ -94,7 +96,7 @@ cuda_try_random_move(struct board *b, enum stone color, coord_t *coord, int f)
 	}
 }
 
-
+// this going to correspond to the UctSearch method in the pseudocode from the literature
 coord_t *cuda_genmove(struct engine *e, struct board *b, struct time_info *ti, enum stone color, bool pass_all_alive){
     //create array of possible moves
     //copy board to device

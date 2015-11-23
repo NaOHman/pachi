@@ -13,7 +13,7 @@
 
 static coord_t *
 kokrusher_genmove(struct engine *e, struct board *b, struct time_info *ti, enum stone color, bool pass_all_alive)
-{
+{ // this method is equivalent to the UctSearch pseudocode method
 #ifdef CUDA
     //If cuda support is enabled generate the move with cuda
     fprintf(stderr, "CUDA KoKrusher\n");
@@ -45,3 +45,8 @@ engine_kokrusher_init(char *arg, struct board *b)
     e->genmove = kokrusher_genmove;
     return e;
 }
+
+typedef struct node {
+
+}
+
