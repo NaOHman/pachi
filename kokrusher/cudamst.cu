@@ -64,7 +64,7 @@ __device__ int cuda_play_random_game(struct board *b, enum stone starting_color)
 	return result;
 }
 
-__device coord_t cuda_play_random_move(struct board *b, enum stone color){
+__device coord_t cuda_play_random_move(struct board *b, enum stone color) {
 	coord_t coord;
 	if (unlikely(b->flen == 0)) {
         struct move m = { pass, color };
