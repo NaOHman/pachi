@@ -19,7 +19,7 @@
 
 # MAC=1
 
-#CUDA=1
+CUDA=1
 
 # By default, Pachi uses low-precision numbers within the game tree to
 # conserve memory. This can become an issue with playout counts >1M,
@@ -108,7 +108,7 @@ endif
 
 ifdef CUDA
 	NVCC_ARCH?=-gencode arch=compute_20,code=sm_20
-	CUDA_LIBS?=-lcudart -lcuda
+CUDA_LIBS?=-lcudart -lcuda -lcurand 
 	LIBS+=$(CUDA_LIBS)
 	CUSTOM_CFLAGS+=-D CUDA
 endif

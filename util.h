@@ -54,8 +54,10 @@ checked_malloc(size_t size, char *filename, unsigned int line, const char *func)
 	void *p = malloc(size);
 	if (!p) {
 #ifdef __cplusplus
+#ifndef __NVCC__
         fprintf(stderr, "%s:%u: %s: OUT OF MEMORY malloc(%zu)\n",
-			filename, line, func, size);
+            filename, line, func, size);
+#endif
 #else
 		fprintf(stderr, "%s:%u: %s: OUT OF MEMORY malloc(%zu)\n",
 			filename, line, func, size);
@@ -70,14 +72,21 @@ checked_calloc(size_t nmemb, size_t size, char *filename, unsigned int line, con
 {
 	void *p = calloc(nmemb, size);
 	if (!p) {
-		fprintf(stderr, "%s:%u: %s: OUT OF MEMORY calloc(%zu, %zu)\n",
-			filename, line, func, nmemb, size);
+#ifndef __NVCC__
+        fprintf(stderr, "%s:%u: %s: OUT OF MEMORY calloc(%zu, %zu)\n",
+            filename, line, func, nmemb, size);
+#endif
 		exit(1);
 	}
 	return p;
 }
 
+#ifdef __NVCC__
+#define malloc2(size)        checked_malloc((size), "", 0, "")
+#define calloc2(nmemb, size) checked_calloc((nmemb), (size), "", 0, "")
+#else
 #define malloc2(size)        checked_malloc((size), __FILE__, __LINE__, __func__)
 #define calloc2(nmemb, size) checked_calloc((nmemb), (size), __FILE__, __LINE__, __func__)
+#endif
 
 #endif

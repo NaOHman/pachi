@@ -37,7 +37,7 @@ struct fbook;
 //#define BOARD_SPATHASH // incremental patternsp.h hashes
 #define BOARD_SPATHASH_MAXD 3 // maximal diameter
 
-#define BOARD_PAT3 // incremental 3x3 pattern codes
+//#define BOARD_PAT3 // incremental 3x3 pattern codes
 
 //#define BOARD_TRAITS 1 // incremental point traits (see struct btraits)
 //#define BOARD_TRAIT_SAFE 1 // include btraits.safe (rather expensive, unused)
@@ -111,19 +111,19 @@ struct btraits {
 	/* Number of neighbors we can capture. 0=this move is
 	 * not capturing, 1..4=this many neighbors we can capture
 	 * (can be multiple neighbors of same group). */
-	unsigned cap:3;
+	unsigned cap;
 	/* Number of 1-stone neighbors we can capture. */
-	unsigned cap1:3;
+	unsigned cap1;
 #ifdef BOARD_TRAIT_SAFE
 	/* Whether it is SAFE to play here. This is essentially just
 	 * cached result of board_safe_to_play(). (Of course the concept
 	 * of "safety" is not perfect here, but it's the cheapest
 	 * reasonable thing we can do.) */
-	bool safe:1;
+	bool safe;
 #endif
 	/* Whether we need to re-compute this coordinate; used to
 	 * weed out duplicates. Maintained only for S_BLACK. */
-	bool dirty:1;
+	bool dirty;
 };
 
 
