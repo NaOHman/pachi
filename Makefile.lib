@@ -74,7 +74,7 @@ endif
 		rm .deps/$(*F).pp
 
 %.o: %.cu
-	$(NVCC_COMPILE) -c $*.cu -o $*.o 
+	$(NVCC_COMPILE) -dc $*.cu -o $*.o 
 
 %.a:
 	$(call cmd,archive)
