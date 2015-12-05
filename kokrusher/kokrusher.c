@@ -18,24 +18,10 @@ kokrusher_genmove(struct engine *e, struct board *b, struct time_info *ti, enum 
 #ifdef CUDA
     //If cuda support is enabled generate the move with cuda
     fprintf(stderr, "CUDA KoKrusher\n");
-    if (e->data == NULL)
-        printf("Data is NULL!\n");
-    return cuda_genmove(e->data, b, ti, color);
+    return cuda_genmove(b, ti, color);
 #else
-    //No cuda support just do your own thing
-    /*fprintf(stderr, "Sequential KoKrusher\n");*/
-    /*coord_t *coord;*/
-    /*struct board b2;*/
-    /*board_copy(&b2, b);*/
-    /*int i,j;*/
-    /*for (i=0; i<=19; i++){*/
-        /*for (j=0; j<=19; j++){*/
-            /*coord = coord_init(i,j,board_size(&b2));*/
-            /*if (board_is_valid_play(&b2, color, *coord))*/
-                /*return coord;*/
-        /*}*/
-    /*}*/
-    *coord = -1;
+    //No cuda support, resign
+    *coord = -2;
     return coord;
 #endif
 }
@@ -48,7 +34,7 @@ engine_kokrusher_init(char *arg, struct board *b)
     e->comment = "Macalester's own kokrusher";
     e->genmove = kokrusher_genmove;
 #ifdef CUDA
-    e->data = init_kokrusher(b);
+    init_kokrusher(b);
 #endif
     return e;
 }
