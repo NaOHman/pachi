@@ -10,7 +10,7 @@ extern "C" {
 #include "kokrusher/cudamst.h"
 
 #define MAX_PLAYS 400
-#define N_PLAYOUTS 100
+#define N_PLAYOUTS 300
 
 #define CUDA_CALL(x) __checkerr((x), __FILE__, __LINE__) 
 
@@ -34,25 +34,27 @@ __device__ int g_caps[S_MAX][M*N];
 __device__ char (*g_ncol)[S_MAX][M*N];
 
 // this method roughly corresponds to the Simulate method from the pseudocode
-__global__ void run_sims(enum stone color, float *votes, int moves, int passes, int size, void *data){
+__global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int passes,float offset, int size, void *data){
     /*cuboard_init(size);*/
     curandState myState = randStates[bid];
-    float win = 0;
-    int first_move = bid % my_flen;
+    int win = 0;
+    int first_move;
     int i;
     //where uct happens: SimTree method from pseudocode
     for (i=0; i<N_PLAYOUTS; i++) {
         cuboard_copy(data, size);
+        first_move = bid % my_flen;
         cuboard_play(color, first_move, size);
-        win += cuda_play_random_game(color, myState, moves, passes, size);
+        win += cuda_play_random_game(color, myState, moves, passes, offset, size);
     }
-    atomicAdd(&votes[first_move], win/N_PLAYOUTS);
+    atomicAdd(&sims[first_move], N_PLAYOUTS);
+    atomicAdd(&votes[first_move],  win);
     //record move: Backup method from pseudocode
 }
 
 // this method corresponds to SimDefault in the pseudocode
-__device__ float 
-cuda_play_random_game(enum stone starting_color, curandState rState, int moves, int passes, int size)
+__device__ int 
+cuda_play_random_game(enum stone starting_color, curandState rState, int moves, int passes, float offset, int size)
 {
 	int gamelen = MAX_PLAYS - moves;
 	enum stone color = starting_color;
@@ -66,53 +68,65 @@ cuda_play_random_game(enum stone starting_color, curandState rState, int moves, 
 			passes = 0;
 		}
 	}
-	float score = cuboard_fast_score(size);
+	float score = cuboard_fast_score(size) + offset;
 	return (starting_color == S_WHITE ^ score < 0? 1 : -1);
 }
 
 // this going to correspond to the UctSearch method in the pseudocode from the literature
 coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color){
-    float *votes = NULL, *hVotes=NULL;
-    size_t vote_size = b->flen * sizeof(float);
+    int *votes = NULL, *hVotes=NULL, *sims=NULL, *hSims=NULL;
+    size_t vote_size = b->flen * sizeof(int);
 	int passes = IS_PASS(b->last_move.coord) && b->moves > 0;
     void *data = NULL, *hData = NULL;
     int data_size = copy_essential_board_data(b, &hData);
-    printf("malloced data %d bytes\n", data_size);
+    float offset = b->komi + b->handicap;
     assert(hData != NULL);
     
     //allocate vote array
-    hVotes = (float *) malloc(vote_size);
+    hVotes = (int *) malloc(vote_size);
     CUDA_CALL(cudaMalloc(&votes, vote_size));
     CUDA_CALL(cudaMemset(votes, 0, vote_size));
+
+    //allocate sim count array
+    hSims = (int *) malloc(vote_size);
+    CUDA_CALL(cudaMalloc(&sims, vote_size));
+    CUDA_CALL(cudaMemset(sims, 0, vote_size));
 
     //allocate and copy board data
     CUDA_CALL(cudaMalloc(&data, data_size));
     CUDA_CALL(cudaMemcpy(data, hData, data_size, cudaMemcpyHostToDevice));
     free(hData);
 
-    run_sims<<<M,N>>>(color, votes, b->moves, passes, b->size, data);
+    run_sims<<<M,N>>>(color, votes, sims, b->moves, passes, offset, b->size, data);
     CUDA_CALL(cudaPeekAtLastError());
 
     CUDA_CALL(cudaMemcpy(hVotes, votes, vote_size, cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(hSims, sims, vote_size, cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaFree(votes));
+    CUDA_CALL(cudaFree(sims));
     CUDA_CALL(cudaFree(data));
 
     coord_t *my_move = (coord_t *) malloc(sizeof(coord_t));
     *my_move=-1;
+    float highest_prob = 0;
     int i;
     for (i=0; i<b->flen; i++) {
-        printf("vote  %d=%d c=%d\n", i, hVotes[i], b->f[i]);
-        if (hVotes[i] > *my_move) {
+        float vprob = ((float) hVotes[i]) / ((float) hSims[i]);
+        printf("vote  %d=%f c=%d\n", i, vprob, b->f[i]);
+        if (vprob > highest_prob) {
             *my_move = b->f[i];
+            highest_prob = vprob;
         }
     }
     free(hVotes);
+    free(hSims);
     return my_move;
 }
 
 void init_kokrusher(struct board *b){
     size_t size = b->size * b->size;
-
+    size_t heap_size = M*N*(size/8) * sizeof(unsigned char);
+    CUDA_CALL(cudaThreadSetLimit(cudaLimitMallocHeapSize, heap_size));
     cudaAllocDevArray(g_b, sizeof(enum stone) * M*N * size);
     cudaAllocDevArray(g_p, sizeof(coord_t) * M*N * size);
     cudaAllocDevArray(g_g, sizeof(group_t) * M*N * size);
