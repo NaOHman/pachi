@@ -1,6 +1,7 @@
 #include "kokrusher/cuboard.h"
 
 extern __device__ int g_flen[M*N];
+extern __device__ __constant__ int b_size;
 extern __device__ stone (*g_b)[M*N];
 extern __device__ coord_t (*g_f)[M*N];
 extern __device__ coord_t (*g_p)[M*N];
@@ -12,37 +13,37 @@ extern __device__ int g_caps[S_MAX][M*N];
 extern __device__ char (*g_ncol)[S_MAX][M*N];
 
 __device__ void 
-cuboard_init(int size) 
+cuboard_init() 
 {
     int i;
     for (i=0; i<S_MAX;i++)
         captures(i) = 0;
     /* Draw the offboard margin */
-    int top_row = (size*size) - size;
-    for (i = 0; i < size; i++)
+    int top_row = (b_size*b_size) - b_size;
+    for (i = 0; i < b_size; i++)
         nth_stone(i) = nth_stone(top_row + i) = S_OFFBOARD;
-    for (i = 0; i <= top_row; i += size)
-        nth_stone(i) = nth_stone((size-1) + i) = S_OFFBOARD;
-    for_each_point(size) {
+    for (i = 0; i <= top_row; i += b_size)
+        nth_stone(i) = nth_stone((b_size-1) + i) = S_OFFBOARD;
+    for_each_point {
         coord_t coord = c;
         if (nth_stone(coord) == S_OFFBOARD)
             continue;
-        for_each_neighbor(size, c, {
+        for_each_neighbor(c, {
             inc_neighbor_count(coord, nth_stone(c));
         } );
     } for_each_point_end;
 
     //all non margin points are free
     my_flen = 0;
-    for (i = size; i < (size - 1) * size; i++)
-        if (i % size != 0 && i % size != size - 1)
+    for (i = b_size; i < (b_size - 1) * b_size; i++)
+        if (i % b_size != 0 && i % b_size != b_size - 1)
             nth_free(my_flen++) = i;
 }
 
 __device__ void 
-cuboard_copy(void* data, int size)
+cuboard_copy(void* data)
 {
-    int size2 = size * size;
+    int size2 = b_size * b_size;
     int i,j;
     //yes this could be one for loop but locality is a thing
     for (i=0; i<size2; i++){
@@ -99,10 +100,10 @@ cuboard_group_addlib(group_t group, coord_t coord)
 }
 
 __device__ static void
-cuboard_group_find_extra_libs(group_t g, coord_t avoid, int sz)
+cuboard_group_find_extra_libs(group_t g, coord_t avoid)
 {
     /* Add extra liberty from the board to our liberty list. */
-    int len = (sz*sz) / 8;
+    int len = (b_size*b_size) / 8;
     for (int i=0; i<len; i++)
         g_watermark[i][bid]=0;
 #define watermark_get(cx)	(g_watermark[cx >> 3][bid] & (1 << (cx & 7)))
@@ -114,7 +115,7 @@ cuboard_group_find_extra_libs(group_t g, coord_t avoid, int sz)
 
     for_each_in_group(g) {
         coord_t coord2 = c;
-        for_each_neighbor(sz, coord2, {
+        for_each_neighbor(coord2, {
             if (nth_stone(c) + watermark_get(c) != S_NONE)
                 continue;
             watermark_set(c);
@@ -122,14 +123,14 @@ cuboard_group_find_extra_libs(group_t g, coord_t avoid, int sz)
             lib_count(g) = lib_count(g) + 1;
             if (lib_count(g) >= GROUP_KEEP_LIBS)
                 return;
-        } );
+        });
     } for_each_in_group_end;
 #undef watermark_get
 #undef watermark_set
 }
 
 __device__ static void
-cuboard_group_rmlib(group_t g, coord_t coord, int size)
+cuboard_group_rmlib(group_t g, coord_t coord)
 {
     for (int i = 0; i < lib_count(g) && i < GROUP_KEEP_LIBS; i++) {
         if (nth_lib(g,i) == coord){
@@ -137,7 +138,7 @@ cuboard_group_rmlib(group_t g, coord_t coord, int size)
             nth_lib(g,i) = nth_lib(g,lib_count(g));
             nth_lib(g,lib_count(g)) = 0;
             if (lib_count(g) == GROUP_REFILL_LIBS)
-                cuboard_group_find_extra_libs(g, coord, size);
+                cuboard_group_find_extra_libs(g, coord);
             return;
         }
     }
@@ -147,14 +148,14 @@ cuboard_group_rmlib(group_t g, coord_t coord, int size)
 /* This is a low-level routine that doesn't maintain consistency
  * of all the board data structures. */
 __device__ static void
-cuboard_remove_stone(group_t group, coord_t c, int size)
+cuboard_remove_stone(group_t group, coord_t c)
 {
     enum stone color = nth_stone(c);
     nth_stone(c) = S_NONE;
     nth_group(c) = 0;
     /* Increase liberties of surrounding groups */
     coord_t coord = c;
-    for_each_neighbor(size, coord, {
+    for_each_neighbor(coord, {
         dec_neighbor_count(c, color);
         group_t g = nth_group(c);
         if (g && g != group){
@@ -167,13 +168,13 @@ cuboard_remove_stone(group_t group, coord_t c, int size)
 }
 
 __device__ static int 
-cuboard_group_capture(group_t group, int size)
+cuboard_group_capture(group_t group)
 {
     int stones = 0;
 
     for_each_in_group(group) {
         captures(custone_other(nth_stone(c)))++;
-        cuboard_remove_stone(group, c, size);
+        cuboard_remove_stone(group, c);
         stones++;
     } for_each_in_group_end;
 
@@ -184,12 +185,12 @@ cuboard_group_capture(group_t group, int size)
 }
 
 __device__ static void 
-add_to_group(group_t group, coord_t prevstone, coord_t coord, int size)
+add_to_group(group_t group, coord_t prevstone, coord_t coord)
 {
     nth_group(coord) = group;
     next_group(coord) = next_group(prevstone);
     next_group(prevstone) = coord;
-    for_each_neighbor(size, coord, {
+    for_each_neighbor(coord, {
         if (nth_stone(c) == S_NONE)
             cuboard_group_addlib(group, c);
     });
@@ -225,10 +226,10 @@ next_from_lib:;
 }
 
 __device__ static group_t
-new_group(coord_t coord, int size)
+new_group(coord_t coord)
 {
     group_t g = coord;
-    for_each_neighbor(size, coord, {
+    for_each_neighbor(coord, {
         if (nth_stone(c) == S_NONE)
             nth_lib(g,lib_count(g)) = c;
             lib_count(g)++;
@@ -240,7 +241,7 @@ new_group(coord_t coord, int size)
 
 __device__ static inline group_t
 play_one_neighbor(coord_t coord, enum stone color, enum stone other_color,
-        coord_t c, group_t group, int size)
+        coord_t c, group_t group)
 {
     enum stone ncolor = nth_stone(c);
     group_t ngroup = nth_group(c);
@@ -250,16 +251,16 @@ play_one_neighbor(coord_t coord, enum stone color, enum stone other_color,
     if (!ngroup)
         return group;
 
-    cuboard_group_rmlib(ngroup, coord, size);
+    cuboard_group_rmlib(ngroup, coord);
     if (ncolor == color && ngroup != group) {
         if (!group) {
             group = ngroup;
-            add_to_group(group, c, coord, size);
+            add_to_group(group, c, coord);
         } else {
             merge_groups(group, ngroup);
         }
     } else if (is_group_captured(ngroup) && ncolor== other_color ) {
-        cuboard_group_capture(ngroup, size);
+        cuboard_group_capture(ngroup);
     }
     return group;
 }
@@ -267,31 +268,31 @@ play_one_neighbor(coord_t coord, enum stone color, enum stone other_color,
 /* We played on a place with at least one liberty. We will become a member of
  * some group for sure. */
 __device__ static group_t
-cuboard_play_outside(enum stone color, coord_t coord, int f, int size)
+cuboard_play_outside(enum stone color, coord_t coord, int f)
 {
     enum stone other_color = custone_other(color);
     group_t group = 0;
 
     my_flen--;
     nth_free(f) = nth_free(my_flen);
-    for_each_neighbor(size, coord, {
-        group = play_one_neighbor(coord, color, other_color, c, group, size);
+    for_each_neighbor(coord, {
+        group = play_one_neighbor(coord, color, other_color, c, group);
     });
 
     nth_stone(coord) = color;
     if (!group)
-        group = new_group(coord, size);
+        group = new_group(coord);
     return group;
 }
 
 /* We played in an eye-like shape. Either we capture at least one of the eye
  * sides in the process of playing, or return -1. */
 __device__ static int 
-cuboard_play_in_eye(enum stone color, coord_t coord, int f, int size)
+cuboard_play_in_eye(enum stone color, coord_t coord, int f)
 {
     int captured_groups = 0;
 
-    for_each_neighbor(size, coord, {
+    for_each_neighbor(coord, {
         group_t g = nth_group(c);
         captured_groups += (lib_count(g) == 1);
     });
@@ -300,62 +301,62 @@ cuboard_play_in_eye(enum stone color, coord_t coord, int f, int size)
         return -1;
     }
     nth_free(f) = nth_free(--my_flen);
-    for_each_neighbor(size, coord, {
+    for_each_neighbor(coord, {
         inc_neighbor_count(c, color);
         group_t group = nth_group(c);
         if (!group)
             continue;
-        cuboard_group_rmlib(group, coord, size);
+        cuboard_group_rmlib(group, coord);
         if (is_group_captured(group)) {
-            cuboard_group_capture(group,size);
+            cuboard_group_capture(group);
         }
     });
     nth_stone(coord) = color;
-    group_t group = new_group(coord, size);
+    group_t group = new_group(coord);
     return !!group;
 }
 
 
 __device__ static int __attribute__((flatten))
-cuboard_play_f(enum stone color, coord_t coord, int f, int size)
+cuboard_play_f(enum stone color, coord_t coord, int f)
 {
     if (!cuboard_is_eyelike(coord, custone_other(color))) {
 		 /*NOT playing in an eye. Thus this move has to succeed. (This*/
          /*is thanks to New Zealand rules. Otherwise, multi-stone*/
 		 /*suicide might fail.) */
-        group_t group = cuboard_play_outside(color, coord, f, size);
+        group_t group = cuboard_play_outside(color, coord, f);
         if (is_group_captured(group)) {
-            cuboard_group_capture(group, size);
+            cuboard_group_capture(group);
         }
         return 0;
     } else {
-        return cuboard_play_in_eye(color, coord, f, size);
+        return cuboard_play_in_eye(color, coord, f);
     }
 }
 
 __device__ int 
-cuboard_play(enum stone color, coord_t coord, int size)
+cuboard_play(enum stone color, coord_t coord)
 {
     if (IS_PASS(coord) || IS_RESIGN(coord))
         return 0;
     int f;
     for (f = 0; f < my_flen; f++)
         if (nth_free(f) == coord)
-            return cuboard_play_f(color, coord, f, size);
+            return cuboard_play_f(color, coord, f);
     return -1;
 }
 
 __device__ static inline bool
-cuboard_try_random_move(enum stone color, coord_t *coord, int f, int size)
+cuboard_try_random_move(enum stone color, coord_t *coord, int f)
 {
     *coord = nth_free(f);
-    if (cuboard_is_one_point_eye(*coord, color, size) /* bad idea to play into one, usually */
-        || !cuboard_is_valid_play(color, *coord, size))
+    if (cuboard_is_one_point_eye(*coord, color) /* bad idea to play into one, usually */
+        || !cuboard_is_valid_play(color, *coord))
         return false;
-    return cuboard_play_f(color, *coord, f, size) >= 0;
+    return cuboard_play_f(color, *coord, f) >= 0;
 }
 
-__device__ void cuboard_play_random(enum stone color, coord_t *coord, curandState rState, int size)
+__device__ void cuboard_play_random(enum stone color, coord_t *coord, curandState rState)
 {
     if (my_flen != 0){
         int f;
@@ -364,27 +365,27 @@ __device__ void cuboard_play_random(enum stone color, coord_t *coord, curandStat
         /*assert(base < my_flen);*/
         assert(82 > my_flen);
         for (f = base; f < my_flen; f++)
-            if (cuboard_try_random_move(color, coord, f, size))
+            if (cuboard_try_random_move(color, coord, f))
                 return;
         for (f = 0; f < base; f++)
-            if (cuboard_try_random_move(color, coord, f, size))
+            if (cuboard_try_random_move(color, coord, f))
                 return;
     }
     *coord = PASS;
-    cuboard_play(color, *coord, size);
+    cuboard_play(color, *coord);
 }
 
 //DOES NOT COUNT KOMI OR HANDICAP
 __device__ floating_t 
-cuboard_fast_score(int size)
+cuboard_fast_score()
 {
     int scores[S_MAX];
     memset(scores, 0, sizeof(scores));
 
-    for_each_point(size) {
+    for_each_point {
         enum stone color = nth_stone(c);
         if(color == S_NONE)
-            color = cuboard_get_one_point_eye(c,size);
+            color = cuboard_get_one_point_eye(c);
         scores[color]++;
     } for_each_point_end;
 
@@ -392,16 +393,16 @@ cuboard_fast_score(int size)
 }
 
 __device__ bool 
-cuboard_is_false_eyelike(coord_t coord, enum stone eye_color, int size)
+cuboard_is_false_eyelike(coord_t coord, enum stone eye_color)
 {
     int color_diag_libs[S_MAX] = {0, 0, 0, 0};
 	 /*XXX: We attempt false eye detection but we will yield false*/
 	 /*positives in case of http://senseis.xmp.net/?TwoHeadedDragon :-( */
 
-    color_diag_libs[nth_stone((coord-size) -1)]++;
-    color_diag_libs[nth_stone((coord-size) +0)]++;
-    color_diag_libs[nth_stone((coord+size) -1)]++;
-    color_diag_libs[nth_stone((coord+size) +1)]++;
+    color_diag_libs[nth_stone((coord-b_size) -1)]++;
+    color_diag_libs[nth_stone((coord-b_size) +1)]++;
+    color_diag_libs[nth_stone((coord+b_size) -1)]++;
+    color_diag_libs[nth_stone((coord+b_size) +1)]++;
 
 	 /*For false eye, we need two enemy stones diagonally in the*/
      /*middle of the board, or just one enemy stone at the edge*/
@@ -411,18 +412,18 @@ cuboard_is_false_eyelike(coord_t coord, enum stone eye_color, int size)
 }
 
 __device__ bool 
-cuboard_is_one_point_eye(coord_t c, enum stone eye_color, int size)
+cuboard_is_one_point_eye(coord_t c, enum stone eye_color)
 {
     return cuboard_is_eyelike(c, eye_color)
-        && !cuboard_is_false_eyelike(c, eye_color,size);
+        && !cuboard_is_false_eyelike(c, eye_color);
 }
 
 __device__ enum stone
-cuboard_get_one_point_eye(coord_t c, int size)
+cuboard_get_one_point_eye(coord_t c)
 {
-    if (cuboard_is_one_point_eye(c, S_WHITE, size))
+    if (cuboard_is_one_point_eye(c, S_WHITE))
         return S_WHITE;
-    else if (cuboard_is_one_point_eye(c, S_BLACK, size))
+    else if (cuboard_is_one_point_eye(c, S_BLACK))
         return S_BLACK;
     else
         return S_NONE;
@@ -436,14 +437,14 @@ cuboard_is_eyelike(coord_t coord, enum stone eye_color)
 }
 
 __device__ inline bool
-cuboard_is_valid_play(enum stone color, coord_t coord, int size)
+cuboard_is_valid_play(enum stone color, coord_t coord)
 {
     if (nth_stone(coord) != S_NONE)
         return false;
     if (!cuboard_is_eyelike(coord, custone_other(color)))
         return true;
     int groups_in_atari = 0;
-    for_each_neighbor(size, coord, {
+    for_each_neighbor(coord, {
         group_t g = nth_group(c);
         groups_in_atari += (lib_count(g) == 1);
     });

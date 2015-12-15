@@ -53,14 +53,14 @@ typedef coord_t group_t;
 
 
 #define is_group_captured(g_) (lib_count(g_) == 0)
-#define for_each_point(size_) \
+#define for_each_point \
     do { \
         coord_t c = 0; \
-        for (; c < size_ * size_; c++)
-#define for_each_point_and_pass(size_) \
+        for (; c < b_size * b_size; c++)
+#define for_each_point_and_pass \
     do { \
         coord_t c = pass; \
-        for (; c < size_ * size_; c++)
+        for (; c < b_size * b_size; c++)
 #define for_each_point_end \
     } while (0)
 
@@ -85,38 +85,37 @@ typedef coord_t group_t;
 
 /* NOT VALID inside of for_each_point() or another for_each_neighbor(), or rather
  * on S_OFFBOARD coordinates. */
-#define for_each_neighbor(size_, coord_, loop_body) \
+#define for_each_neighbor(coord_, loop_body) \
     do { \
         coord_t coord__ = coord_; \
-        coord_t sz_ = size_; \
         coord_t c; \
-        c = coord__ - sz_; do { loop_body } while (0); \
+        c = coord__ - b_size; do { loop_body } while (0); \
         c = coord__ - 1; do { loop_body } while (0); \
         c = coord__ + 1; do { loop_body } while (0); \
-        c = coord__ + sz_; do { loop_body } while (0); \
+        c = coord__ + b_size; do { loop_body } while (0); \
     } while (0)
 
 __device__ __host__ inline enum stone custone_other(enum stone s);
 
-__device__ void cuboard_init(int size);
+__device__ void cuboard_init();
 
-__device__ void cuboard_copy(void* data, int size);
+__device__ void cuboard_copy(void* data);
 
-__device__ int cuboard_play(enum stone color, coord_t coord, int size);
+__device__ int cuboard_play(enum stone color, coord_t coord);
 
-__device__ void cuboard_play_random(enum stone color, coord_t *coord, curandState rState, int size);
+__device__ void cuboard_play_random(enum stone color, coord_t *coord, curandState rState);
 
-__device__ static bool cuboard_is_valid_play(enum stone color, coord_t coord, int size);
+__device__ static bool cuboard_is_valid_play(enum stone color, coord_t coord);
 
-__device__ floating_t cuboard_fast_score(int size);
+__device__ floating_t cuboard_fast_score();
 
 __device__ static bool cuboard_is_eyelike(coord_t coord, enum stone eye_color);
 
-__device__ bool cuboard_is_false_eyelike(coord_t coord, enum stone eye_color, int size);
+__device__ bool cuboard_is_false_eyelike(coord_t coord, enum stone eye_color);
 
-__device__ bool cuboard_is_one_point_eye(coord_t c, enum stone eye_color, int size);
+__device__ bool cuboard_is_one_point_eye(coord_t c, enum stone eye_color);
 
-__device__ enum stone cuboard_get_one_point_eye(coord_t c, int size);
+__device__ enum stone cuboard_get_one_point_eye(coord_t c);
 
 __device__ __host__ inline enum stone __attribute__((always_inline)) 
 custone_other(enum stone s)

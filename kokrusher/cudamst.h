@@ -7,7 +7,7 @@ extern "C" void init_kokrusher(struct board *b);
 size_t copy_essential_board_data(struct board * b, void **data);
 void __checkerr(cudaError_t e, char * file, int line);
 __global__ void cuda_rand_init(unsigned long seed);
-__device__ int cuda_play_random_game(enum stone starting_color, curandState rState, int moves, int passes, float offset, int size);
+__device__ int cuda_play_random_game(enum stone starting_color, curandState rState, int moves, int passes, float offset);
 #else
 coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color);
 void init_kokrusher(struct board *b);

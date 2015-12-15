@@ -23,6 +23,7 @@ extern "C" {
 //Global board state array variables.
 //Yes this code is horrible. I'm sorry.
 __device__ curandState randStates[M*N];
+__device__ __constant__ int b_size;
 __device__ int g_flen[M*N];
 __device__ stone (*g_b)[M*N];
 __device__ coord_t (*g_f)[M*N];
@@ -35,18 +36,19 @@ __device__ int g_caps[S_MAX][M*N];
 __device__ char (*g_ncol)[S_MAX][M*N];
 
 // this method roughly corresponds to the Simulate method from the pseudocode
-__global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int passes,float offset, int size, void *data){
+__global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int passes,float offset, void *data){
     /*cuboard_init(size);*/
+    assert(b_size == 11);
     curandState myState = randStates[bid];
     int win = 0;
     int first_move;
     int i;
     //where uct happens: SimTree method from pseudocode
     for (i=0; i<N_PLAYOUTS; i++) {
-        cuboard_copy(data, size);
+        cuboard_copy(data);
         first_move = bid % my_flen;
-        cuboard_play(color, first_move, size);
-        win += cuda_play_random_game(color, myState, moves, passes, offset, size);
+        cuboard_play(color, first_move);
+        win += cuda_play_random_game(color, myState, moves, passes, offset);
     }
     atomicAdd(&sims[first_move], N_PLAYOUTS);
     atomicAdd(&votes[first_move],  win);
@@ -55,21 +57,21 @@ __global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int
 
 // this method corresponds to SimDefault in the pseudocode
 __device__ int 
-cuda_play_random_game(enum stone starting_color, curandState rState, int moves, int passes, float offset, int size)
+cuda_play_random_game(enum stone starting_color, curandState rState, int moves, int passes, float offset)
 {
 	int gamelen = MAX_PLAYS - moves;
 	enum stone color = starting_color;
 	while (gamelen-- && passes < 2) {
 		color = custone_other(color);
         coord_t coord;
-		cuboard_play_random(color, &coord, rState, size);
+		cuboard_play_random(color, &coord, rState);
 		if (IS_PASS(coord)) {
 			passes++;
 		} else {
 			passes = 0;
 		}
 	}
-	float score = cuboard_fast_score(size) + offset;
+	float score = cuboard_fast_score() + offset;
 	return (starting_color == S_WHITE ^ score < 0? 1 : -1);
 }
 
@@ -98,7 +100,7 @@ coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color){
     CUDA_CALL(cudaMemcpy(data, hData, data_size, cudaMemcpyHostToDevice));
     free(hData);
 
-    run_sims<<<M,N>>>(color, votes, sims, b->moves, passes, offset, b->size, data);
+    run_sims<<<M,N>>>(color, votes, sims, b->moves, passes, offset, data);
     CUDA_CALL(cudaPeekAtLastError());
 
     CUDA_CALL(cudaMemcpy(hVotes, votes, vote_size, cudaMemcpyDeviceToHost));
@@ -135,6 +137,7 @@ void init_kokrusher(struct board *b){
     cudaAllocDevArray(g_gi, sizeof(coord_t) * GROUP_KEEP_LIBS * M*N * size);
     cudaAllocDevArray(g_ncol, sizeof(char) * S_MAX * M*N * size);
     cudaAllocDevArray(g_f, sizeof(coord_t) * M*N * size);
+    cudaMemcpyToSymbol(b_size, &b->size, sizeof(int));
 
     //initialize random states
     cuda_rand_init<<<M,N>>>(time(NULL));    
