@@ -29,6 +29,7 @@ __device__ coord_t (*g_f)[M*N];
 __device__ coord_t (*g_p)[M*N];
 __device__ group_t (*g_g)[M*N];
 __device__ int (*g_libs)[M*N];
+__device__ unsigned char (*g_watermark)[M*N];
 __device__ coord_t (*g_gi)[GROUP_KEEP_LIBS][M*N];
 __device__ int g_caps[S_MAX][M*N];
 __device__ char (*g_ncol)[S_MAX][M*N];
@@ -125,8 +126,8 @@ coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color){
 
 void init_kokrusher(struct board *b){
     size_t size = b->size * b->size;
-    size_t heap_size = M*N*(size/8) * sizeof(unsigned char);
-    CUDA_CALL(cudaThreadSetLimit(cudaLimitMallocHeapSize, heap_size));
+    /*CUDA_CALL(cudaThreadSetLimit(cudaLimitMallocHeapSize, heap_size));*/
+    cudaAllocDevArray(g_watermark, (M*N*(size/8) * sizeof(unsigned char)));
     cudaAllocDevArray(g_b, sizeof(enum stone) * M*N * size);
     cudaAllocDevArray(g_p, sizeof(coord_t) * M*N * size);
     cudaAllocDevArray(g_g, sizeof(group_t) * M*N * size);
@@ -192,6 +193,5 @@ void __checkerr(cudaError_t e, char * file, int line){
 }
 
 __global__ void cuda_rand_init(unsigned long seed){
-    int id = threadIdx.x;
-    curand_init(seed, id, 0, randStates + id);
+    curand_init(seed, bid, 0, &randStates[bid]);
 }

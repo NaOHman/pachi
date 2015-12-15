@@ -6,6 +6,7 @@ extern __device__ coord_t (*g_f)[M*N];
 extern __device__ coord_t (*g_p)[M*N];
 extern __device__ group_t (*g_g)[M*N];
 extern __device__ int (*g_libs)[M*N];
+extern __device__ unsigned char (*g_watermark)[M*N];
 extern __device__ coord_t (*g_gi)[GROUP_KEEP_LIBS][M*N];
 extern __device__ int g_caps[S_MAX][M*N];
 extern __device__ char (*g_ncol)[S_MAX][M*N];
@@ -102,11 +103,10 @@ cuboard_group_find_extra_libs(group_t g, coord_t avoid, int sz)
 {
     /* Add extra liberty from the board to our liberty list. */
     int len = (sz*sz) / 8;
-    unsigned char *watermark = (unsigned char *) cMalloc(sizeof(unsigned char) * len);
     for (int i=0; i<len; i++)
-        watermark[i]=0;
-#define watermark_get(cx)	(watermark[cx >> 3] & (1 << (cx & 7)))
-#define watermark_set(cx)	(watermark[cx >> 3] |= (1 << (cx & 7)))
+        g_watermark[i][bid]=0;
+#define watermark_get(cx)	(g_watermark[cx >> 3][bid] & (1 << (cx & 7)))
+#define watermark_set(cx)	(g_watermark[cx >> 3][bid] |= (1 << (cx & 7)))
 
     for (int i = 0; i < GROUP_KEEP_LIBS - 1; i++)
         watermark_set(nth_lib(g,i));
@@ -124,7 +124,6 @@ cuboard_group_find_extra_libs(group_t g, coord_t avoid, int sz)
                 return;
         } );
     } for_each_in_group_end;
-    free(watermark);
 #undef watermark_get
 #undef watermark_set
 }
