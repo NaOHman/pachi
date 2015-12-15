@@ -24,6 +24,7 @@ extern "C" {
 //Yes this code is horrible. I'm sorry.
 __device__ curandState randStates[M*N];
 __device__ __constant__ int b_size;
+__device__ __constant__ int g_data[board_data_size(BOARD_MAX_SIZE + 2)];
 __device__ int g_flen[M*N];
 __device__ stone (*g_b)[M*N];
 __device__ coord_t (*g_f)[M*N];
@@ -36,7 +37,7 @@ __device__ int g_caps[S_MAX][M*N];
 __device__ char (*g_ncol)[S_MAX][M*N];
 
 // this method roughly corresponds to the Simulate method from the pseudocode
-__global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int passes,float offset, void *data){
+__global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int passes,float offset){
     /*cuboard_init(size);*/
     assert(b_size == 11);
     curandState myState = randStates[bid];
@@ -45,7 +46,7 @@ __global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int
     int i;
     //where uct happens: SimTree method from pseudocode
     for (i=0; i<N_PLAYOUTS; i++) {
-        cuboard_copy(data);
+        cuboard_copy();
         first_move = bid % my_flen;
         cuboard_play(color, first_move);
         win += cuda_play_random_game(color, myState, moves, passes, offset);
@@ -80,10 +81,8 @@ coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color){
     int *votes = NULL, *hVotes=NULL, *sims=NULL, *hSims=NULL;
     size_t vote_size = b->flen * sizeof(int);
 	int passes = IS_PASS(b->last_move.coord) && b->moves > 0;
-    void *data = NULL, *hData = NULL;
-    int data_size = copy_essential_board_data(b, &hData);
+    copy_essential_board_data(b);
     float offset = b->komi + b->handicap;
-    assert(hData != NULL);
     
     //allocate vote array
     hVotes = (int *) malloc(vote_size);
@@ -95,19 +94,13 @@ coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color){
     CUDA_CALL(cudaMalloc(&sims, vote_size));
     CUDA_CALL(cudaMemset(sims, 0, vote_size));
 
-    //allocate and copy board data
-    CUDA_CALL(cudaMalloc(&data, data_size));
-    CUDA_CALL(cudaMemcpy(data, hData, data_size, cudaMemcpyHostToDevice));
-    free(hData);
-
-    run_sims<<<M,N>>>(color, votes, sims, b->moves, passes, offset, data);
+    run_sims<<<M,N>>>(color, votes, sims, b->moves, passes, offset);
     CUDA_CALL(cudaPeekAtLastError());
 
     CUDA_CALL(cudaMemcpy(hVotes, votes, vote_size, cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaMemcpy(hSims, sims, vote_size, cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaFree(votes));
     CUDA_CALL(cudaFree(sims));
-    CUDA_CALL(cudaFree(data));
 
     coord_t *my_move = (coord_t *) malloc(sizeof(coord_t));
     *my_move=-1;
@@ -147,7 +140,7 @@ void init_kokrusher(struct board *b){
     return;
 }
 
-size_t copy_essential_board_data(struct board * b, void **d){
+void copy_essential_board_data(struct board * b){
     int size2 = board_size2(b);
     int bsize = size2 * sizeof(*b->b);
 	int fsize = size2 * sizeof(*b->f);
@@ -160,8 +153,8 @@ size_t copy_essential_board_data(struct board * b, void **d){
     int flensize = sizeof(int);
     int total = bsize + fsize + psize + gsize + glibsize + gisize + ncolsize + capsize + flensize;
     int i,j;
-    char *data = (char *) malloc(total);
-    *d = (void *) data;
+    void *start = malloc(total);
+    char *data = (char *) start;
     memcpy(data, b->b, bsize);
     data += bsize;
     memcpy(data, b->f, fsize);
@@ -185,7 +178,9 @@ size_t copy_essential_board_data(struct board * b, void **d){
         ((int *) data)[i] = b->captures[i];
     data += capsize;
     *((int *) data) = b->flen;
-    return total;
+    printf("copying %d bytes\n", total);
+    printf("board_data_size %d bytes\n", board_data_size(11) * sizeof(int));
+    cudaMemcpyToSymbol(g_data, start, total);
 }
 
 void __checkerr(cudaError_t e, char * file, int line){

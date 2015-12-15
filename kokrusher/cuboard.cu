@@ -2,6 +2,7 @@
 
 extern __device__ int g_flen[M*N];
 extern __device__ __constant__ int b_size;
+extern __device__ __constant__ int g_data[board_data_size(BOARD_MAX_SIZE + 2)];
 extern __device__ stone (*g_b)[M*N];
 extern __device__ coord_t (*g_f)[M*N];
 extern __device__ coord_t (*g_p)[M*N];
@@ -41,10 +42,11 @@ cuboard_init()
 }
 
 __device__ void 
-cuboard_copy(void* data)
+cuboard_copy()
 {
     int size2 = b_size * b_size;
     int i,j;
+    void* data = (void *) g_data;
     //yes this could be one for loop but locality is a thing
     for (i=0; i<size2; i++){
         nth_stone(i) = *((enum stone *) data);

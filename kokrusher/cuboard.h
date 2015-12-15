@@ -6,6 +6,7 @@
 #include <curand_kernel.h>
 #include <assert.h>
 
+#define board_data_size(sz_) (((5 + S_MAX+GROUP_KEEP_LIBS) * (sz_) * (sz_)) + S_MAX + 1) 
 #define cMalloc(c) check_malloc(c)
 extern "C" {
 #endif
@@ -99,7 +100,7 @@ __device__ __host__ inline enum stone custone_other(enum stone s);
 
 __device__ void cuboard_init();
 
-__device__ void cuboard_copy(void* data);
+__device__ void cuboard_copy();
 
 __device__ int cuboard_play(enum stone color, coord_t coord);
 
