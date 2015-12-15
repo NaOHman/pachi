@@ -2,8 +2,8 @@ INCLUDES=-I..
 
 all: kokrusher.a
 ifdef CUDA
-kokrusher.a: cudamst.o cuboard.o kokrusher.o
-	nvcc -lib cudamst.o cuboard.o kokrusher.o -o kokrusher.a
+kokrusher.a: cudamst.o cuboard.o kokrusher.o uct.o
+	nvcc -lib cudamst.o uct.o cuboard.o kokrusher.o -o kokrusher.a
 else
 kokrusher.a: kokrusher.o
 endif

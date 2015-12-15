@@ -362,7 +362,7 @@ __device__ void cuboard_play_random(enum stone color, coord_t *coord, curandStat
         int base = curand_uniform(&rState) * my_flen;
         /*assert(base >= 0);*/
         /*assert(base < my_flen);*/
-        assert(82 > my_flen);
+        /*assert(82 > my_flen);*/
         for (f = base; f < my_flen; f++)
             if (cuboard_try_random_move(color, coord, f, size))
                 return;
@@ -435,7 +435,7 @@ cuboard_is_eyelike(coord_t coord, enum stone eye_color)
             + neighbor_count(coord, S_OFFBOARD)) == 4;
 }
 
-__device__ inline bool
+__device__ bool
 cuboard_is_valid_play(enum stone color, coord_t coord, int size)
 {
     if (nth_stone(coord) != S_NONE)

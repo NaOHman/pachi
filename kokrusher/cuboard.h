@@ -17,7 +17,7 @@ extern "C" {
 }
 #endif
 
-#define M 256
+#define M 128
 #define N 256
 #define BOARD_MAX_SIZE 19
 
@@ -106,7 +106,7 @@ __device__ int cuboard_play(enum stone color, coord_t coord, int size);
 
 __device__ void cuboard_play_random(enum stone color, coord_t *coord, curandState rState, int size);
 
-__device__ static bool cuboard_is_valid_play(enum stone color, coord_t coord, int size);
+__device__ bool cuboard_is_valid_play(enum stone color, coord_t coord, int size);
 
 __device__ floating_t cuboard_fast_score(int size);
 

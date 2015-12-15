@@ -1,20 +1,32 @@
-#include "board.h"
+#ifndef PACHI_CUUCT_H
+#define PACHI_CUUCT_H
 
-struct tree_node {
-		struct tree_node* parent;
-		struct tree_node** children;
-		int* child_visits;
-		float* child_q;
-};
+#include "kokrusher/cuboard.h"
 
-struct tree_node* init_tree(struct board* b);
+#define MAX_ALLOC 32400001
+//#define child_size ((b_size - 2) * (b_size -2))
+#define child_size 81
 
-float uct(float child_q, int parent_visits, int child_visits, bool my_turn);
+#define tree_parent(t_) (g_tree[t_][0])
+#define tree_wins(t_) (g_tree[t_][1])
+#define tree_visits(t_) (g_tree[t_][2])
+#define tree_child(t_) (g_tree[t_][3])
+#define tree_nth_child(t_,n_) (g_tree[t_][3] + n_)
+#define coord_2_index(c_, sz_) ((((c_)/sz_) - 1) * (sz_ - 2) + (((c_) % sz_) -1))
+#define index_2_coord(i_, sz_) ((((i_)/(sz_-2)) * (sz_)) + ((i_) % (sz_-2)) + sz_ + 1)
 
-int roulette_select(int parent_visits, float* q_array, int* child_visits_array, bool my_turn);
+typedef int tree_t;
 
-struct tree_node* new_node(struct tree_node* parent, int index, struct board* b);
+__device__ void init_tree(tree_t id, tree_t parent);
 
-struct tree_node* sim_tree(int visits, struct tree_node* current, struct board* b, enum stone play_color, enum stone my_color);
+__device__ float uct(int my_wins, int parent_visits, int my_visits);
 
-void backup(struct tree_node* n, bool is_win);
+__device__ int roulette_select(tree_t node, int size);
+
+__device__ tree_t walk_down(enum stone *play_color, int size);
+
+__device__ void backup(tree_t n, bool is_win);
+
+__device__ coord_t best_move(int size);
+
+#endif
