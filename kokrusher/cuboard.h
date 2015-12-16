@@ -104,7 +104,7 @@ __device__ void cuboard_copy();
 
 __device__ int cuboard_play(enum stone color, coord_t coord);
 
-__device__ void cuboard_play_random(enum stone color, coord_t *coord, curandState rState);
+__device__ void cuboard_play_random(enum stone color, coord_t *coord);
 
 __device__ static bool cuboard_is_valid_play(enum stone color, coord_t coord);
 

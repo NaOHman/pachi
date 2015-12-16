@@ -10,7 +10,7 @@ extern "C" {
 #include "kokrusher/cudamst.h"
 
 #define MAX_PLAYS 400
-#define N_PLAYOUTS 300
+#define N_PLAYOUTS 30
 
 #define CUDA_CALL(x) __checkerr((x), __FILE__, __LINE__) 
 
@@ -40,16 +40,16 @@ __device__ char (*g_ncol)[S_MAX][M*N];
 __global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int passes,float offset){
     /*cuboard_init(size);*/
     assert(b_size == 11);
-    curandState myState = randStates[bid];
     int win = 0;
     int first_move;
     int i;
     //where uct happens: SimTree method from pseudocode
     for (i=0; i<N_PLAYOUTS; i++) {
         cuboard_copy();
+        __threadfence();
         first_move = bid % my_flen;
-        cuboard_play(color, first_move);
-        win += cuda_play_random_game(color, myState, moves, passes, offset);
+        cuboard_play(color, nth_free(first_move));
+        win += cuda_play_random_game(color, moves, passes, offset);
     }
     atomicAdd(&sims[first_move], N_PLAYOUTS);
     atomicAdd(&votes[first_move],  win);
@@ -58,14 +58,14 @@ __global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int
 
 // this method corresponds to SimDefault in the pseudocode
 __device__ int 
-cuda_play_random_game(enum stone starting_color, curandState rState, int moves, int passes, float offset)
+cuda_play_random_game(enum stone starting_color, int moves, int passes, float offset)
 {
 	int gamelen = MAX_PLAYS - moves;
 	enum stone color = starting_color;
 	while (gamelen-- && passes < 2) {
 		color = custone_other(color);
         coord_t coord;
-		cuboard_play_random(color, &coord, rState);
+		cuboard_play_random(color, &coord);
 		if (IS_PASS(coord)) {
 			passes++;
 		} else {
@@ -108,7 +108,6 @@ coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color){
     int i;
     for (i=0; i<b->flen; i++) {
         float vprob = ((float) hVotes[i]) / ((float) hSims[i]);
-        printf("vote  %d=%f c=%d\n", i, vprob, b->f[i]);
         if (vprob > highest_prob) {
             *my_move = b->f[i];
             highest_prob = vprob;
@@ -178,8 +177,6 @@ void copy_essential_board_data(struct board * b){
         ((int *) data)[i] = b->captures[i];
     data += capsize;
     *((int *) data) = b->flen;
-    printf("copying %d bytes\n", total);
-    printf("board_data_size %d bytes\n", board_data_size(11) * sizeof(int));
     cudaMemcpyToSymbol(g_data, start, total);
 }
 

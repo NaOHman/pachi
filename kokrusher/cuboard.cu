@@ -1,5 +1,6 @@
 #include "kokrusher/cuboard.h"
 
+extern __device__ curandState randStates[M*N];
 extern __device__ int g_flen[M*N];
 extern __device__ __constant__ int b_size;
 extern __device__ __constant__ int g_data[board_data_size(BOARD_MAX_SIZE + 2)];
@@ -358,11 +359,11 @@ cuboard_try_random_move(enum stone color, coord_t *coord, int f)
     return cuboard_play_f(color, *coord, f) >= 0;
 }
 
-__device__ void cuboard_play_random(enum stone color, coord_t *coord, curandState rState)
+__device__ void cuboard_play_random(enum stone color, coord_t *coord)
 {
     if (my_flen != 0){
         int f;
-        int base = curand_uniform(&rState) * my_flen;
+        int base = curand_uniform(&randStates[bid]) * my_flen;
         /*assert(base >= 0);*/
         /*assert(base < my_flen);*/
         assert(82 > my_flen);
