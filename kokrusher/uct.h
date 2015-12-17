@@ -1,20 +1,14 @@
-#include "board.h"
+#ifndef PACHI_KKUCT
+#define PACHI_KKUCT
 
-struct tree_node {
-		struct tree_node* parent;
-		struct tree_node** children;
-		int* child_visits;
-		float* child_q;
-};
+typedef struct m_tree {
+    struct m_tree *parent, *child;
+    int visits, wins;
+} m_tree_t;
 
-struct tree_node* init_tree(struct board* b);
+__device__ int
+roulette_uct(int p_visits, int *visits, int* wins, int len);
 
-float uct(float child_q, int parent_visits, int child_visits, bool my_turn);
-
-int roulette_select(int parent_visits, float* q_array, int* child_visits_array, bool my_turn);
-
-struct tree_node* new_node(struct tree_node* parent, int index, struct board* b);
-
-struct tree_node* sim_tree(int visits, struct tree_node* current, struct board* b, enum stone play_color, enum stone my_color);
-
-void backup(struct tree_node* n, bool is_win);
+__host__ __device__  float
+uct(int p_visits, int my_visits, int my_wins);
+#endif

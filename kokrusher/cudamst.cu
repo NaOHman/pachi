@@ -4,13 +4,14 @@
 #include <stdio.h>
 #include <curand_kernel.h>
 #include "kokrusher/cuboard.h"
+#include "kokrusher/uct.h"
 extern "C" {
 #include "board.h"
 }
 #include "kokrusher/cudamst.h"
 
-#define MAX_PLAYS 400
-#define N_PLAYOUTS 30
+#define MAX_PLAYS 200
+#define N_PLAYOUTS 25
 
 #define CUDA_CALL(x) __checkerr((x), __FILE__, __LINE__) 
 
@@ -24,6 +25,7 @@ extern "C" {
 //Yes this code is horrible. I'm sorry.
 __device__ curandState randStates[M*N];
 __device__ __constant__ int b_size;
+__device__ int g_visits;
 __device__ __constant__ int g_data[board_data_size(BOARD_MAX_SIZE + 2)];
 __device__ int g_flen[M*N];
 __device__ stone (*g_b)[M*N];
@@ -37,33 +39,43 @@ __device__ int g_caps[S_MAX][M*N];
 __device__ char (*g_ncol)[S_MAX][M*N];
 
 // this method roughly corresponds to the Simulate method from the pseudocode
-__global__ void run_sims(enum stone color, int *votes, int *sims, int moves, int passes,float offset){
-    /*cuboard_init(size);*/
-    assert(b_size == 11);
-    int win = 0;
-    int first_move;
-    int i;
+__global__ void run_sims(enum stone color, int *wins, int *visits, int moves, float komi){
+    enum stone starting_color = color;
+    float score;
+    int max_free = (b_size - 2) * (b_size - 2);
+    int win, mv1, mv2, offset;
     //where uct happens: SimTree method from pseudocode
-    for (i=0; i<N_PLAYOUTS; i++) {
+    for (int i=0; i<N_PLAYOUTS; i++) {
         cuboard_copy();
-        __threadfence();
-        first_move = bid % my_flen;
-        cuboard_play(color, nth_free(first_move));
-        win += cuda_play_random_game(color, moves, passes, offset);
+        mv1 = roulette_uct(g_visits, visits, wins, my_flen);
+        offset = my_flen + (mv1 * max_free);
+        cuboard_play(color, nth_free(mv1));
+
+        mv2 = roulette_uct(visits[mv1], visits + offset, wins + offset, my_flen);
+        cuboard_play(custone_other(color), nth_free(mv2));
+
+        cuda_playout(color, moves); //divergent section
+
+        score = cuboard_fast_score() + komi;
+	    win = (starting_color == S_WHITE ^ score < 0);
+
+        atomicAdd(&g_visits, 1);
+        atomicAdd(&visits[mv1], 1);
+        atomicAdd(&visits[offset + mv2], 1);
+        atomicAdd(&wins[mv1],  win);
+        atomicAdd(&wins[offset + mv2],  win);
     }
-    atomicAdd(&sims[first_move], N_PLAYOUTS);
-    atomicAdd(&votes[first_move],  win);
     //record move: Backup method from pseudocode
 }
 
 // this method corresponds to SimDefault in the pseudocode
-__device__ int 
-cuda_play_random_game(enum stone starting_color, int moves, int passes, float offset)
+__device__ void 
+cuda_playout(enum stone starting_color, int moves)
 {
+    int passes = 0;
 	int gamelen = MAX_PLAYS - moves;
 	enum stone color = starting_color;
 	while (gamelen-- && passes < 2) {
-		color = custone_other(color);
         coord_t coord;
 		cuboard_play_random(color, &coord);
 		if (IS_PASS(coord)) {
@@ -71,50 +83,55 @@ cuda_play_random_game(enum stone starting_color, int moves, int passes, float of
 		} else {
 			passes = 0;
 		}
+		color = custone_other(color);
 	}
-	float score = cuboard_fast_score() + offset;
-	return (starting_color == S_WHITE ^ score < 0? 1 : -1);
 }
 
 // this going to correspond to the UctSearch method in the pseudocode from the literature
 coord_t *cuda_genmove(struct board *b, struct time_info *ti, enum stone color){
-    int *votes = NULL, *hVotes=NULL, *sims=NULL, *hSims=NULL;
-    size_t vote_size = b->flen * sizeof(int);
-	int passes = IS_PASS(b->last_move.coord) && b->moves > 0;
+    int *wins = NULL, *hWins=NULL, *visits=NULL, *hVisits=NULL;
+    int max_free = (b->size - 2) * (b->size - 2);
+    size_t free_size = (b->flen + (max_free * b->flen)) * sizeof(int);
+    size_t short_size = b->flen * sizeof(int);
+    int *hg_visits = (int *) malloc(sizeof(int));
     copy_essential_board_data(b);
     float offset = b->komi + b->handicap;
+    int zero = 0;
+    CUDA_CALL(cudaMemcpyToSymbol(g_visits, &zero, sizeof(int)));
     
     //allocate vote array
-    hVotes = (int *) malloc(vote_size);
-    CUDA_CALL(cudaMalloc(&votes, vote_size));
-    CUDA_CALL(cudaMemset(votes, 0, vote_size));
+    hWins = (int *) malloc(free_size);
+    CUDA_CALL(cudaMalloc(&wins, free_size));
+    CUDA_CALL(cudaMemset(wins, 0, free_size));
 
     //allocate sim count array
-    hSims = (int *) malloc(vote_size);
-    CUDA_CALL(cudaMalloc(&sims, vote_size));
-    CUDA_CALL(cudaMemset(sims, 0, vote_size));
+    hVisits = (int *) malloc(free_size);
+    CUDA_CALL(cudaMalloc(&visits, free_size));
+    CUDA_CALL(cudaMemset(visits, 0, free_size));
 
-    run_sims<<<M,N>>>(color, votes, sims, b->moves, passes, offset);
+    run_sims<<<M,N>>>(color, wins, visits, b->moves, offset);
     CUDA_CALL(cudaPeekAtLastError());
 
-    CUDA_CALL(cudaMemcpy(hVotes, votes, vote_size, cudaMemcpyDeviceToHost));
-    CUDA_CALL(cudaMemcpy(hSims, sims, vote_size, cudaMemcpyDeviceToHost));
-    CUDA_CALL(cudaFree(votes));
-    CUDA_CALL(cudaFree(sims));
+    CUDA_CALL(cudaMemcpy(hWins, wins, short_size, cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpy(hVisits, visits, short_size, cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaMemcpyFromSymbol(hg_visits, g_visits, sizeof(int)));
+    CUDA_CALL(cudaFree(wins));
+    CUDA_CALL(cudaFree(visits));
 
     coord_t *my_move = (coord_t *) malloc(sizeof(coord_t));
     *my_move=-1;
-    float highest_prob = 0;
+    float highest_uct = 0.25;
+    float uct_score;
     int i;
     for (i=0; i<b->flen; i++) {
-        float vprob = ((float) hVotes[i]) / ((float) hSims[i]);
-        if (vprob > highest_prob) {
+        uct_score = uct(*hg_visits, hVisits[i], hWins[i]);
+        if (uct_score > highest_uct) {
             *my_move = b->f[i];
-            highest_prob = vprob;
+            highest_uct = uct_score;
         }
     }
-    free(hVotes);
-    free(hSims);
+    free(hWins);
+    free(hVisits);
     return my_move;
 }
 
