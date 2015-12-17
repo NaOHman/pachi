@@ -1,3 +1,7 @@
+/**
+ * This file contains all of the UCT related functions needed
+ * to make MCTS work
+ */
 #include "kokrusher/cuboard.h"
 #include "kokrusher/uct.h"
 #include "kokrusher/cudautil.h"
@@ -16,9 +20,12 @@ __device__ int next_tree;
 __device__ m_tree_t root[MAX_ALLOC];
 extern __device__ int g_flen[M*N];
 extern __device__ int (*g_f)[M*N];
-
 extern __device__ curandState randStates[M*N];
 
+/**
+ * Calculate the UCT score for the given values of parent visits, visits, and wins.
+ * Since all number may be zero we have to accomodate by replacing with constants
+ */
 __device__ float 
 uct(int p_visits, int visits, int wins) 
 {
@@ -28,19 +35,26 @@ uct(int p_visits, int visits, int wins)
     return my_q + (UCT_CONST * sqrt(radicand));		
 }
 
+/**
+ * a function that scales the UCT scores. This is necessary because the difference
+ * between good and bad scores is often quite small
+ */
 __device__ float 
 roulette_scaling_function(float uct) 
 {
-    // 0 should probably output as 0, so maybe not an exponential function?
     return uct*uct*uct*uct*uct*uct;
 }
 
-__device__ int 
+/**
+ * Uses Roulette Selection to pick a child node of the given node. Children are
+ * Weighted by their scaled UCT score. Returns the chosen child
+ */
+__device__ m_tree_t * 
 roulette_uct(m_tree_t *node) 
 {
     float total = 0.0;
     float score;
-    for (int i=0; i<node->c_len; i++) { // iterate over length of array: size^2
+    for (int i=0; i<node->c_len; i++) { 
         score = uct(node->visits, node->children[i].visits, node->children[i].wins);
         score = roulette_scaling_function(score);
         total = total + score;
@@ -54,9 +68,12 @@ roulette_uct(m_tree_t *node)
             result = i; 
         } 
     }
-    return result; 
+    return node->children + result; 
 }
 
+/**
+ * initialize a tree node given it's parent and the move it represents
+ */
 __device__ void
 init_node(m_tree_t *self, m_tree_t *parent, coord_t move)
 {
@@ -64,12 +81,16 @@ init_node(m_tree_t *self, m_tree_t *parent, coord_t move)
     self->wins = 0;
     self->parent = parent;
     self->children = NULL;
-    self->c_len = -1;
+    self->c_len = -1; //signifies this node has not been expanded
     self->move = move;
 }
 
-/* must be called when the thread's board is 
-   in the same state as the node */
+/** 
+ * expand a node of the tree, it must be called when the thread's board is 
+ * in the same state as the node. There is a very high chance of a collision
+ * and therefore wasted memory but since there's no critical section support
+ * in CUDA we just have to live with it.
+ */
 __device__ void
 alloc_children(m_tree_t *node)
 {
@@ -82,45 +103,45 @@ alloc_children(m_tree_t *node)
     }
 }
 
+/**
+ * Selects a leaf node for expansion and returns that node.
+ * Modifies the play_color and the thread-local board to reflect the path
+ */
 __device__  m_tree_t *
 walk_down(enum stone *play_color) 
 {
-    /* 
-    This method traverses our tree data structure and finds a leaf node.
-    It uses the roulette_select method above to decide which node to traverse to
-    at each layer, and that method only returns legal moves.
-    When the node selected at the next layer already exists, it recursively
-    traverses to that node.  Otherwise, it creates a new node and returns it.
-    The board is a thread-local object, passed into this method so that it can
-    be updated with moves corresponding to the tree traversal. 
-    */
-    int next;
     m_tree_t* current = &(root[0]);
     // check if next node exists, if not, create it.  first time always true
     do { 
         if (current->c_len == -1)
             alloc_children(current);
-        if (current->c_len == -1) //game is in end state, just return it the playout won't happen
+        if (current->c_len == 0) //game is in end state, just return it the playout won't do anything harmful
             return current;
-        next = roulette_uct(current);
-        current = current->children + next;
+        current = roulette_uct(current);
         cuboard_play(*play_color, current->move);
         *play_color = custone_other(*play_color);
     } while (current->visits > 0);
     return current;
 }
 
+/**
+ * record the results of a simulation, is_win = whether the color corresponding to the 
+ * node won NOT whether the player being simulated won
+ */
 __device__ void 
 backup(m_tree_t *node, bool is_win) 
 {
     while (node != NULL) {
-        atomicAdd(&(node->visits), 1); //actually fairly high chance of collision now that I think about it...
+        atomicAdd(&(node->visits), 1); //very high chance of collision
         atomicAdd(&(node->wins), is_win);
         is_win = !is_win;
         node = node->parent;
     } 
 }
 
+/**
+ * a kernel that fetches the node with the highest UCT score
+ */
 __global__ void
 harvest_best(int *best)
 {
@@ -138,6 +159,9 @@ harvest_best(int *best)
     }
 }
 
+/**
+ * the host side wrapper for harvest_best
+ */
 __host__ int
 get_best_move(struct board *b)
 {
@@ -147,17 +171,21 @@ get_best_move(struct board *b)
     CUDA_CALL(cudaMemcpy(hBest,dBest,sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CALL(cudaFree(dBest));
     for (int i=0; i<b->flen; i++){
-        //sanity check
+        //sanity check TODO check for ko violations
         if (*hBest == b->f[i])
             return *hBest;
     }
     return PASS;
 }
 
+/**
+ * pre allocate the first two layers to avoid collisions
+ * you must call copy_essential_board_data before this
+ */
 __global__ void
 alloc_root(enum stone color)
 {
-    cuboard_copy();
+    cuboard_reset();
     m_tree_t *self = &root[threadIdx.x + 1];
     init_node(self, root, nth_free(threadIdx.x));
     cuboard_play(color, nth_free(threadIdx.x));
@@ -169,6 +197,10 @@ alloc_root(enum stone color)
     }
 }
 
+/**
+ * Host side wrapper for alloc_root,
+ * you must call copy_essential_board_data before this
+ */
 __host__ void
 reset_tree(enum stone color, int flen)
 {

@@ -1,3 +1,9 @@
+/**
+ * this file is a rewrite of board.c for use on CUDA
+ * all functions do what their counterparts in board.c do
+ * but with some functionality stripped away
+ */
+
 #include "kokrusher/cuboard.h"
 
 extern __device__ curandState randStates[M*N];
@@ -14,36 +20,12 @@ extern __device__ coord_t (*g_gi)[GROUP_KEEP_LIBS][M*N];
 extern __device__ int g_caps[S_MAX][M*N];
 extern __device__ char (*g_ncol)[S_MAX][M*N];
 
+/**
+ * reset the thread local board so that it's a copy of the global
+ * board stored in g_data
+ */
 __device__ void 
-cuboard_init() 
-{
-    int i;
-    for (i=0; i<S_MAX;i++)
-        captures(i) = 0;
-    /* Draw the offboard margin */
-    int top_row = (b_size*b_size) - b_size;
-    for (i = 0; i < b_size; i++)
-        nth_stone(i) = nth_stone(top_row + i) = S_OFFBOARD;
-    for (i = 0; i <= top_row; i += b_size)
-        nth_stone(i) = nth_stone((b_size-1) + i) = S_OFFBOARD;
-    for_each_point {
-        coord_t coord = c;
-        if (nth_stone(coord) == S_OFFBOARD)
-            continue;
-        for_each_neighbor(c, {
-            inc_neighbor_count(coord, nth_stone(c));
-        } );
-    } for_each_point_end;
-
-    //all non margin points are free
-    my_flen = 0;
-    for (i = b_size; i < (b_size - 1) * b_size; i++)
-        if (i % b_size != 0 && i % b_size != b_size - 1)
-            nth_free(my_flen++) = i;
-}
-
-__device__ void 
-cuboard_copy()
+cuboard_reset()
 {
     int size2 = b_size * b_size;
     int i,j;
@@ -88,6 +70,9 @@ cuboard_copy()
     my_flen = *((int *) data);
 }
 
+/**
+ * add a liberty at coord to the given group
+ */
 __device__ static void
 cuboard_group_addlib(group_t group, coord_t coord)
 {
@@ -102,6 +87,10 @@ cuboard_group_addlib(group_t group, coord_t coord)
     }
 }
 
+/**
+ * check for extra liberties not already counted by the group
+ * moderately expensive so don't call too often
+ */
 __device__ static void
 cuboard_group_find_extra_libs(group_t g, coord_t avoid)
 {
@@ -132,6 +121,9 @@ cuboard_group_find_extra_libs(group_t g, coord_t avoid)
 #undef watermark_set
 }
 
+/**
+ * Somebody played at coord, remove it as a liberty from the group
+ */
 __device__ static void
 cuboard_group_rmlib(group_t g, coord_t coord)
 {
@@ -148,8 +140,11 @@ cuboard_group_rmlib(group_t g, coord_t coord)
 }
 
 
-/* This is a low-level routine that doesn't maintain consistency
- * of all the board data structures. */
+/**
+ * Remove a stone from the board
+ * This is a low-level routine that doesn't maintain consistency
+ * of all the board data structures. 
+ */
 __device__ static void
 cuboard_remove_stone(group_t group, coord_t c)
 {
@@ -170,6 +165,9 @@ cuboard_remove_stone(group_t group, coord_t c)
     my_flen++;
 }
 
+/**
+ * capture a group, remove the stones and update global variables accordingly
+ */
 __device__ static int 
 cuboard_group_capture(group_t group)
 {
@@ -187,6 +185,9 @@ cuboard_group_capture(group_t group)
     return stones;
 }
 
+/**
+ * add a stone to the group after prevstone
+ */
 __device__ static void 
 add_to_group(group_t group, coord_t prevstone, coord_t coord)
 {
@@ -199,6 +200,12 @@ add_to_group(group_t group, coord_t prevstone, coord_t coord)
     });
 }
 
+/**
+ * combine two groups into one
+ * fairly expensive operation, but unavoidable
+ * The goto is not mine and I'm afraid of touching it
+ * because I have no idea what it's doing
+ */
 __device__ static void
 merge_groups(group_t to, group_t from)
 {
@@ -228,6 +235,9 @@ next_from_lib:;
         nth_lib(from,i) = 0;
 }
 
+/**
+ * create a new singleton group containing the coord
+ */
 __device__ static group_t
 new_group(coord_t coord)
 {
@@ -242,6 +252,10 @@ new_group(coord_t coord)
     return g;
 }
 
+/**
+ * a stone was played at coord, belonging to group. Update c to reflect
+ * this change
+ */
 __device__ static inline group_t
 play_one_neighbor(coord_t coord, enum stone color, enum stone other_color,
         coord_t c, group_t group)
@@ -268,8 +282,10 @@ play_one_neighbor(coord_t coord, enum stone color, enum stone other_color,
     return group;
 }
 
-/* We played on a place with at least one liberty. We will become a member of
- * some group for sure. */
+/**
+ * We played on a place with at least one liberty. We will become a member of
+ * some group for sure. 
+ */
 __device__ static group_t
 cuboard_play_outside(enum stone color, coord_t coord, int f)
 {
@@ -288,8 +304,10 @@ cuboard_play_outside(enum stone color, coord_t coord, int f)
     return group;
 }
 
-/* We played in an eye-like shape. Either we capture at least one of the eye
- * sides in the process of playing, or return -1. */
+/**
+ * We played in an eye-like shape. Either we capture at least one of the eye
+ * sides in the process of playing, or return -1. For invalid move
+ */
 __device__ static int 
 cuboard_play_in_eye(enum stone color, coord_t coord, int f)
 {
@@ -319,7 +337,10 @@ cuboard_play_in_eye(enum stone color, coord_t coord, int f)
     return !!group;
 }
 
-
+/**
+ * play color at coord which corresponds to index f
+ * in the free queue
+ */
 __device__ static int __attribute__((flatten))
 cuboard_play_f(enum stone color, coord_t coord, int f)
 {
@@ -337,6 +358,10 @@ cuboard_play_f(enum stone color, coord_t coord, int f)
     }
 }
 
+/**
+ * play a color at coord, return 0 if coord was pass or resign,
+ * and -1 if the move is invalid. Otherwise return > 0
+ */
 __device__ int 
 cuboard_play(enum stone color, coord_t coord)
 {
@@ -349,6 +374,9 @@ cuboard_play(enum stone color, coord_t coord)
     return -1;
 }
 
+/**
+ * try a random move, if it does not succeed, try try again
+ */
 __device__ static inline bool
 cuboard_try_random_move(enum stone color, coord_t *coord, int f)
 {
@@ -359,6 +387,10 @@ cuboard_try_random_move(enum stone color, coord_t *coord, int f)
     return cuboard_play_f(color, *coord, f) >= 0;
 }
 
+/**
+ * generate a random move for the given color, the resulting move will be
+ * stored in coord
+ */
 __device__ void cuboard_play_random(enum stone color, coord_t *coord)
 {
     if (my_flen != 0){
@@ -378,7 +410,10 @@ __device__ void cuboard_play_random(enum stone color, coord_t *coord)
     cuboard_play(color, *coord);
 }
 
-//DOES NOT COUNT KOMI OR HANDICAP
+/**
+ * generate a naive score, misses some uncommon shapes but is very fast
+ * does not account for komi or handicap
+ */
 __device__ floating_t 
 cuboard_fast_score()
 {
@@ -395,6 +430,9 @@ cuboard_fast_score()
     return scores[S_WHITE] - scores[S_BLACK];
 }
 
+/**
+ * return true if all the diagonals are one color
+ */
 __device__ bool 
 cuboard_is_false_eyelike(coord_t coord, enum stone eye_color)
 {
@@ -414,6 +452,9 @@ cuboard_is_false_eyelike(coord_t coord, enum stone eye_color)
     return color_diag_libs[custone_other(eye_color)] >= 2;
 }
 
+/**
+ * returns true  if position is a single eye
+ */
 __device__ bool 
 cuboard_is_one_point_eye(coord_t c, enum stone eye_color)
 {
@@ -421,6 +462,9 @@ cuboard_is_one_point_eye(coord_t c, enum stone eye_color)
         && !cuboard_is_false_eyelike(c, eye_color);
 }
 
+/**
+ * returns the color of a single eye
+ */
 __device__ enum stone
 cuboard_get_one_point_eye(coord_t c)
 {
@@ -432,6 +476,9 @@ cuboard_get_one_point_eye(coord_t c)
         return S_NONE;
 }
 
+/**
+ * true if point is surrounded by all one color
+ */
 __device__ inline bool
 cuboard_is_eyelike(coord_t coord, enum stone eye_color)
 {
@@ -439,6 +486,9 @@ cuboard_is_eyelike(coord_t coord, enum stone eye_color)
             + neighbor_count(coord, S_OFFBOARD)) == 4;
 }
 
+/**
+ * true if move is a valid play, does not account for ko
+ */
 __device__ inline bool
 cuboard_is_valid_play(enum stone color, coord_t coord)
 {

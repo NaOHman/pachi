@@ -18,8 +18,8 @@ extern "C" {
 }
 #endif
 
-#define M 64
-#define N 64
+#define M 128
+#define N 128
 #define BOARD_MAX_SIZE 19
 
 #define IS_PASS(c) (c == -1)
@@ -33,7 +33,7 @@ typedef coord_t group_t;
 #define GROUP_KEEP_LIBS 10
 #define GROUP_REFILL_LIBS 5
 
-#define bid (threadIdx.x + (blockIdx.x * blockIdx.x))
+#define bid (threadIdx.x + (blockIdx.x * blockDim.x))
 #define nth_free(c_) (g_f[c_][bid])
 #define my_flen (g_flen[bid])
 #define next_group(c_) (g_p[c_][bid])
@@ -97,9 +97,7 @@ typedef coord_t group_t;
 
 __device__ __host__ inline enum stone custone_other(enum stone s);
 
-__device__ void cuboard_init();
-
-__device__ void cuboard_copy();
+__device__ void cuboard_reset(void);
 
 __device__ int cuboard_play(enum stone color, coord_t coord);
 
@@ -107,7 +105,7 @@ __device__ void cuboard_play_random(enum stone color, coord_t *coord);
 
 __device__ static bool cuboard_is_valid_play(enum stone color, coord_t coord);
 
-__device__ floating_t cuboard_fast_score();
+__device__ floating_t cuboard_fast_score(void);
 
 __device__ static bool cuboard_is_eyelike(coord_t coord, enum stone eye_color);
 
