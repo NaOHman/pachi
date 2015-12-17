@@ -12,8 +12,11 @@ extern "C" {
 #include "kokrusher/cudamst.h"
 
 #define MAX_PLAYS 200
-#define N_PLAYOUTS 10
-
+#define N_PLAYOUTS 60
+/*#define BENCHMARK*/
+#ifdef BENCHMARK
+#include <sys/time.h>
+#endif
 //Global board state array variables.
 //Yes this code is horrible. I'm sorry.
 __device__ curandState randStates[M*N];
@@ -34,9 +37,7 @@ __device__ char (*g_ncol)[S_MAX][M*N];
 __global__ void 
 run_sims(enum stone color, int moves, float komi)
 {
-    enum stone starting_color = color;
     float score;
-    /*int max_free = (b_size - 2) * (b_size - 2);*/
     int win;
     m_tree_t *node;
     //where uct happens: SimTree method from pseudocode
@@ -45,7 +46,7 @@ run_sims(enum stone color, int moves, float komi)
         node = walk_down(&color);
         cuda_playout(color, moves); //divergent section
         score = cuboard_fast_score() + komi;
-	    win = (starting_color == S_WHITE ^ score < 0);
+	    win = (color == S_WHITE ^ score < 0);
         backup(node, win);
     }
     //record move: Backup method from pseudocode
@@ -75,13 +76,24 @@ cuda_genmove(struct board *b, struct time_info *ti, enum stone color)
 {
     copy_essential_board_data(b);
     float offset = b->komi + b->handicap;
-    
+
+#ifdef BENCHMARK
+    struct timeval t1, t2;
+    gettimeofday(&t1, 0);
+#endif
+
     reset_tree(color, b->flen);
     run_sims<<<M,N>>>(color, b->moves, offset);
     CUDA_CALL(cudaDeviceSynchronize());
-
     coord_t *my_move = (coord_t *) malloc(sizeof(coord_t));
     *my_move= get_best_move(b);
+
+#ifdef BENCHMARK
+    gettimeofday(&t2, 0);
+    double duration = (1000000.0*(t2.tv_sec-t1.tv_sec) + t2.tv_usec-t1.tv_usec)/1000000.0;
+    printf("SIMS %d, duration %lf\n", M*N*N_PLAYOUTS, duration);
+#endif
+
     return my_move;
 }
 

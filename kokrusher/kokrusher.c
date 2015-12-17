@@ -17,10 +17,10 @@ kokrusher_genmove(struct engine *e, struct board *b, struct time_info *ti, enum 
 { // this method is equivalent to the UctSearch pseudocode method
 #ifdef CUDA
     //If cuda support is enabled generate the move with cuda
-    fprintf(stderr, "CUDA KoKrusher\n");
     return cuda_genmove(b, ti, color);
 #else
     //No cuda support, resign
+    fprintf(stderr, "CUDA not supported, please rebuild with the CUDA flag\n");
     *coord = -2;
     return coord;
 #endif

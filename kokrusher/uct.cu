@@ -32,7 +32,7 @@ __device__ float
 roulette_scaling_function(float uct) 
 {
     // 0 should probably output as 0, so maybe not an exponential function?
-    return uct*uct;
+    return uct*uct*uct*uct*uct*uct;
 }
 
 __device__ int 
@@ -116,6 +116,7 @@ backup(m_tree_t *node, bool is_win)
     while (node != NULL) {
         atomicAdd(&(node->visits), 1); //actually fairly high chance of collision now that I think about it...
         atomicAdd(&(node->wins), is_win);
+        is_win = !is_win;
         node = node->parent;
     } 
 }
@@ -123,15 +124,16 @@ backup(m_tree_t *node, bool is_win)
 __global__ void
 harvest_best(int *best)
 {
-    float highest_uct = 0.25; //if odds are we loose 75% for each move, just pass.
-    float score;
+    float highest_rate = 0.25; //if odds are we loose 75% for each move, just pass.
+    float win_rate;
     *best = 1;
     m_tree_t node  = root[0];
     for (int i=0; i<node.c_len; i++) { // iterate over length of array: size^2
-        score = uct(node.visits, node.children[i].visits, node.children[i].wins);
-        if (score > highest_uct){
+        //just use the win percentage, no bonus for unexplored nodes
+        win_rate =(float) node.children[i].wins/ (float) node.children[i].visits;
+        if (win_rate > highest_rate){
             *best = node.children[i].move;
-            highest_uct = score;
+            highest_rate = win_rate;
         }
     }
 }

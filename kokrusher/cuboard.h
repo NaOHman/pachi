@@ -18,8 +18,8 @@ extern "C" {
 }
 #endif
 
-#define M 256
-#define N 256
+#define M 64
+#define N 64
 #define BOARD_MAX_SIZE 19
 
 #define IS_PASS(c) (c == -1)
@@ -28,13 +28,12 @@ extern "C" {
 #define RESIGN -2
 
 typedef int coord_t;
-typedef int bid_t;
 typedef coord_t group_t;
 
 #define GROUP_KEEP_LIBS 10
 #define GROUP_REFILL_LIBS 5
 
-#define bid (threadIdx.x + (blockIdx.x * gridDim.x))
+#define bid (threadIdx.x + (blockIdx.x * blockIdx.x))
 #define nth_free(c_) (g_f[c_][bid])
 #define my_flen (g_flen[bid])
 #define next_group(c_) (g_p[c_][bid])
