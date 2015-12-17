@@ -104,7 +104,7 @@ AR=ar
 endif
 
 ifdef CUDA
-	NVCC_ARCH?=-gencode arch=compute_20,code=sm_20
+	NVCC_ARCH?=-gencode arch=compute_20,code=sm_20 -lineinfo
 CUDA_LIBS?=-lcudart -lcuda -lcurand 
 	LIBS+=$(CUDA_LIBS)
 	CUSTOM_CFLAGS+=-D CUDA
